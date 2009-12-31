@@ -29,7 +29,7 @@ module Four
       puts
     end
     def images
-      doc ? doc/"span.filesize a" : []
+      doc ? doc/"a[@href*='files/']" : []
     end
     def mark_image_as_fetched(image_url)
       Image.mark_as_fetched image_url
@@ -95,7 +95,7 @@ module Four
     end
     def initialize(element,chan)
       @url = element[:href]
-      @filename = element.inner_html
+      @filename = element[:href][/\d+\..*/]
       @channel = chan
     end
     def fetch_if_wanted!
@@ -105,6 +105,7 @@ module Four
     end
     def fetch!
       with_rubustness do
+        @url = "http://krautchan.net" + @url
         response = Net::HTTP.get_response(URI.parse(url))
         if response.is_a? Net::HTTPSuccess
           save(response.body)
@@ -121,16 +122,21 @@ module Four
       File.open fullpath, 'w' do |file|
         file.write data
       end
-      if fullpath.downcase["jpg"] then
-        exif = EXIFR::JPEG.new(fullpath)
-        if exif.exif? then
-          puts fullpath + " has exif data."
-          if exif.exif.gps_longitude then
-            mkdir_p(File.join(directory,"gps"))
-            FileUtils.mv(fullpath,File.join(directory, "gps" ,filename)) 
-            puts fullpath + " has GPS data!!"
+      begin
+        if fullpath.downcase["jpg"] then
+          exif = EXIFR::JPEG.new(fullpath)
+          if exif.exif? then
+            puts fullpath + " has exif data."
+            if exif.exif.gps_longitude then
+              mkdir_p(File.join(directory,"gps"))
+              FileUtils.mv(fullpath,File.join(directory, "gps" ,filename)) 
+              puts fullpath + " has GPS data!!"
+            end
           end
         end
+      rescue TypeError
+
+        log "Somethings wrong with exif"
       end
     end
     def wanted?
@@ -167,7 +173,10 @@ module Four
     attr_reader :url, :channel
     def initialize(elem,chan)
       @channel = chan
-      @url = "http://boards.4chan.org/#{channel.section}/#{elem[:href]}"
+#@root = "http://boards.4chan.org/"
+      @root = "http://krautchan.net/"
+@suffix = ""
+      @url = "#{@root}#{elem[:href]}"
     end
   end
   class Chan
@@ -185,7 +194,11 @@ module Four
       $stdout.sync=true
     end
     def reply_links
-      doc ? (doc/"//a[@href^='res/'").select {|a| a.inner_html == 'Reply' } : []
+      #@reply_tag = "res/"
+      #@reply_inner = "Reply"
+      @reply_tag = "thread"
+      @reply_inner = "Antworten"
+      doc ? (doc/"//a[@href^='#{@reply_tag}'").select {|a| a.inner_html == @reply_inner } : []
     end
     def fetch_replies
       reply_links.each do |link|
@@ -200,10 +213,14 @@ module Four
       log("next page => #{@page}")
     end
     def url
+      #@root = "http://boards.4chan.org/"
+      @root = "http://krautchan.net/"
+      #@suffix = ""
+      @suffix = ".html"
       if @page && @page > 0
-        "http://boards.4chan.org/#{section}/#{page}"
+        "#{@root}#{section}/#{page}#{@suffix}"
       else
-        "http://boards.4chan.org/#{section}/"
+        "#{@root}#{section}/"
       end
     end
     def browse
