@@ -19,9 +19,13 @@ The program was inspired by a thread on /b/, asking for a program to quick-check
 - Save only images contanig GPS data
 - auto-generate html files containing the picture and an embedded Google Maps view 
 
+### Attention
+
+Using this software on NSFW channels (like /b/, or /s/, which is the default!) will result in NSFW images on your computer. Don't use it if you don't want that.
+
 
 Original README below.
----------------------
+----------------------
 
 This is a small ruby script which fetches all images of a 4chan channel recursively by screenscraping.
 
