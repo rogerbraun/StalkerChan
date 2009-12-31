@@ -4,6 +4,7 @@ require "rubygems"
 require "nokogiri"
 require "open-uri"
 require "exifr"
+require "optparse"
 
 class Image
 
@@ -22,10 +23,17 @@ class Image
       puts "Schon geladen: #{url}"
     else
       puts "Lade #{url}"
-      File.open(File.join(@folder, url[/\d+\..*/]), 'w') do |file|
-        file.write(open(url).read) 
-      end 
-      @@read_images[@href] = true
+      filename = File.join(@folder, url[/\d+\..*/])     
+      begin
+        File.open(filename, 'w') do |file|
+          file.write(open(url).read)           
+        end 
+        @@read_images[@href] = true
+      rescue OpenURI::HTTPError
+        puts error
+        puts url + " already gone..."
+        File.delete(filename) 
+      end
     end   
   end
 
@@ -79,6 +87,7 @@ class Page
     @threads = @doc/"a[@href*='thread-']"
 
     @threads.each do |thread|
+      puts "Thread: #{@pagenum}"
       Faden.new(@root,thread[:href],@folder).fetch
     end
   end
@@ -86,17 +95,23 @@ end
 
 class Downloader
 
-  def initialize(root, suffix, channel, folder)
-    @root, @suffix, @channel,@folder = root, suffix, channel, folder
+  def initialize(root, suffix, channel, folder, options)
+    @root, @suffix, @channel,@folder,@options = root, suffix, channel, folder,options
     if File.exists?(File.join(folder, channel + "_downloaded")) then
       puts channel + "_downloaded existiert"
     end
   end
 
   def fetch
+    threads = [] if @options[:threaded]
     (0..10).each do |pagenum|
-      Page.new(@root, @suffix, @channel, pagenum,@folder).fetch
+      if @options[:threaded] then
+        threads << Thread.new { Page.new(@root, @suffix, @channel, pagenum,@folder).fetch}        
+      else
+        Page.new(@root, @suffix, @channel, pagenum,@folder).fetch
+      end
     end
+    threads.each do |thread| thread.join end if @options[:threaded]
   end
 
   def fetch_endlessly
@@ -107,4 +122,28 @@ class Downloader
 
 end
 
-Downloader.new("http://krautchan.net",".html","s","images").fetch
+options = {}
+
+optparse = OptionParser.new do |opts|
+
+  opts.banner = "Usage: stalkerchan.rb [options]"
+
+  options[:verbose] = false
+  opts.on( "-v","--verbose","Verbose mode") do
+    options[:verbose] = true
+  end
+
+  options[:threaded] = false
+  opts.on("-t","--threaded","Use threads") do
+    options[:threaded] = true
+  end
+
+  opts.on("-h","--help","Display this screen") do
+    puts opts
+    exit
+  end
+end
+
+optparse.parse!
+
+Downloader.new("http://krautchan.net",".html","b","images", options).fetch
