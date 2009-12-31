@@ -21,9 +21,11 @@ The program was inspired by a thread on /b/, asking for a program to quick-check
 - exifr
 
 ### Usage
-stalkerchan.rb [-c channel | -f folder]
+    stalkerchan.rb [-c channel | -f folder]
 
-For more options see stalkerchan.rb --help
+For more options see 
+
+    stalkerchan.rb --help
 
 ### Attention
 Using this software on NSFW channels (like /b/, or /s/, which is the default!) will result in NSFW images on your computer. Don't use it if you don't want that.
