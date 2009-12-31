@@ -1,267 +1,183 @@
-#!/usr/bin/ruby
+#!/usr/bin/env ruby
 
-require 'rubygems'
-require 'hpricot'
-require 'open-uri'
-require 'fileutils'
+require "rubygems"
+require "nokogiri"
+require "open-uri"
 require "exifr"
+require "optparse"
+require "fileutils"
 
-#require "nokogiri"
 
-# TODO catch Timeout::Error from thread
-# TODO make directories configurable. CL-Argument?
-module Four
+class Image
 
-  module Output
-    def debug(text)
-      puts text
-    end
-    def log(statement='')
-      puts "#{self.class} #{self} - #{statement}"
-    end
+  @@read_images = Hash.new
+
+  def initialize(root, href, folder)
+    @root, @href, @folder = root, href,folder
   end
 
-  module ImageFetcher
-    def fetch_images
-      images.each do |image|
-        Image.new(image,channel).fetch_if_wanted!
-      end
-      puts
-    end
-    def images
-      doc ? doc/"a[@href*='files/']" : []
-    end
-    def mark_image_as_fetched(image_url)
-      Image.mark_as_fetched image_url
-    end
-    def image_fetched?(image_url)
-      Image.fetched? image_url
-    end
+  def url
+    @root + @href
   end
 
-  module Robustness
-    def with_rubustness
-      tries = 0
+  def fetch
+    if @@read_images[@href] then
+      puts "Schon geladen: #{url}"
+    else
+      puts "Lade #{url}"
+      filename = File.join(@folder, url[/\d+\..*/])     
       begin
-        yield
-      rescue Timeout::Error, EOFError
-        tries += 1
-        if tries < 5
-          log("error")
-          retry
-        else
-          log("epic fail, tried #{tries} times")
+        if !File.exists?(filename) then
+          File.open(filename, 'w') do |file|
+            file.write(open(url).read)           
+          end
+        else  
+          puts "File exists already: #{filename}" if File.exists?(filename)
         end
-      rescue OpenURI::HTTPError
-        log("too late. it's gone.")
+        @@read_images[@href] = true
+      rescue OpenURI::HTTPError => error
+        puts error
+        puts url + " already gone..."
+        File.delete(filename) 
       end
-    end
+    end   
   end
 
-  module Page
-    include Robustness
-    attr_reader :doc
-    def fetch!
-      with_rubustness do
-        @doc = Hpricot(open(url)) 
-        log("fetched. Now the Images..")
-      end
-    end
-    def to_s
-      url
-    end
+end
+
+class Faden 
+
+  @@read_threads = Hash.new 
+
+  def initialize(root, url, folder)
+    @root, @url, @folder = root, url, folder
+    puts "Lese Thread #{url}"
   end
 
-  class Image
-    include FileUtils
-    include Output
-    include Robustness
-    attr_reader :url, :filename, :channel
-    @@fetched = {}
-    def self.mark_as_fetched(url)
-      @@fetched[url] = true
-    end
-    def mark_as_fetched
-      self.class.mark_as_fetched url
-    end
-    def self.fetched?(url)
-      @@fetched.has_key? url
-    end
-    def self.fetched_count
-      @@fetched.length
-    end
-    def fetched?
-      self.class.fetched? url
-    end
-    def initialize(element,chan)
-      @url = element[:href]
-      @filename = element[:href][/\d+\..*/]
-      @channel = chan
-    end
-    def fetch_if_wanted!
-      if wanted?
-        fetch!
-      end
-    end
-    def fetch!
-      with_rubustness do
-        @url = "http://krautchan.net" + @url
-        response = Net::HTTP.get_response(URI.parse(url))
-        if response.is_a? Net::HTTPSuccess
-          save(response.body)
-          log('fetched')
-          mark_as_fetched
-          log_as_fetched
-        else
-          log("epic fail")
-        end
-      end
-    end
-    def save(data)
-      mkdir_p directory
-      File.open fullpath, 'w' do |file|
-        file.write data
-      end
+  def url
+    @root + @url
+  end
+
+  def fetch
+    if @@read_threads[url.split("#")[0]] then
+      puts "Thread schon gelesen!"
+    else
       begin
-        if fullpath.downcase["jpg"] then
-          exif = EXIFR::JPEG.new(fullpath)
-          if exif.exif? then
-            puts fullpath + " has exif data."
-            if exif.exif.gps_longitude then
-              mkdir_p(File.join(directory,"gps"))
-              FileUtils.mv(fullpath,File.join(directory, "gps" ,filename)) 
-              puts fullpath + " has GPS data!!"
-            end
-          end
+        @doc = Nokogiri(open(url))
+        @@read_threads[url] = true
+        @images = @doc/"a[@href*='files']"
+        @images.each do |element|
+          Image.new(@root,element[:href],@folder).fetch
         end
-      rescue TypeError
-
-        log "Somethings wrong with exif"
+      rescue OpenURI::HTTPError => error
+        puts "Error while fetching #{url} - #{error}"
       end
-    end
-    def wanted?
-      if fetched?
-        log("already fetched")
-        return false
-      elsif File.exists? fullpath
-        log("file exists")
-        mark_as_fetched
-        return false
-      else
-        return true
-      end
-    end
-    def directory
-      File.join ENV['HOME'], 'images', '4chan', channel.section
-    end
-    def fullpath
-      File.join directory, filename
-    end
-    def log_as_fetched
-      File.open channel.fetched_images_path, 'a' do |file|
-        file.puts url
-      end
-    end
-    def to_s
-      url
-    end
+    end  
   end
-  class Reply
-    include Output
-    include ImageFetcher
-    include Page
-    attr_reader :url, :channel
-    def initialize(elem,chan)
-      @channel = chan
-#@root = "http://boards.4chan.org/"
-      @root = "http://krautchan.net/"
-@suffix = ""
-      @url = "#{@root}#{elem[:href]}"
-    end
+end
+
+class Page
+  
+  def initialize(options, pagenum)
+    @channel,@pagenum,@folder,@options = options[:channel],pagenum,File.join(options[:folder],options[:channel]), options
+    @root, @suffix = "http://krautchan.net",".html" if @options[:chan] == "krautchan"
   end
-  class Chan
-    include Output
-    include Page
-    include ImageFetcher
-    MaxPages = 10
-    attr_accessor :section
-    attr_accessor :page
-    attr_reader :channel
-    def initialize(chan=nil)
-      @section = (chan.nil? or chan.empty?) ? 's' : chan
-      @channel = self # HACK for ImageFetcher
-      @page = nil
-      $stdout.sync=true
-    end
-    def reply_links
-      #@reply_tag = "res/"
-      #@reply_inner = "Reply"
-      @reply_tag = "thread"
-      @reply_inner = "Antworten"
-      doc ? (doc/"//a[@href^='#{@reply_tag}'").select {|a| a.inner_html == @reply_inner } : []
-    end
-    def fetch_replies
-      reply_links.each do |link|
-        reply = Reply.new(link, self)
-        reply.fetch!
-        reply.fetch_images
-      end
-    end
-    def next_page
-      @page ||= 1
-      @page += 1
-      log("next page => #{@page}")
-    end
-    def url
-      #@root = "http://boards.4chan.org/"
-      @root = "http://krautchan.net/"
-      #@suffix = ""
-      @suffix = ".html"
-      if @page && @page > 0
-        "#{@root}#{section}/#{page}#{@suffix}"
-      else
-        "#{@root}#{section}/"
-      end
-    end
-    def browse
-      startup
-      @page = 0 
-      MaxPages.times do
-        fetch!
-        fetch_images
-        fetch_replies
-        next_page
-      end
-    end
-    def browse_forever
-      while(true) do
-        browse
-        sleep 23
-      end
-    end
 
-    def fetched_images_path
-      File.join ENV['HOME'], 'images', '4chan', section + '_fetched.txt'
-    end
+  def page
+    @pagenum.to_s + @suffix
+  end
 
-    private
-    def startup
-      path = fetched_images_path
-      if File.exists? path
-        File.open path do |file|
-          file.each_line do |image|
-            mark_image_as_fetched image.chomp
-          end
-        end
-      end
-      log("Remembered #{Image.fetched_count} images")
+  def url
+    @root + "/" + @channel + "/" + page
+  end
+
+  def fetch
+    puts url
+    @doc = Nokogiri(open(url))
+
+    @threads = @doc/"a[@href*='thread-']"
+    FileUtils.makedirs(@folder)
+    @threads.each do |thread|
+      Faden.new(@root,thread[:href],@folder).fetch
     end
   end
 end
 
-begin
-  Four::Chan.new(ARGV.shift).browse_forever
-rescue Exception => e
-  puts "Exception: #{e.class}: #{e.message}\n\t#{e.backtrace.join("\n\t")}"
-  exit 1
+class Downloader
+
+  def initialize(options)
+    @channel,@folder, @options = options[:channel], options[:folder], options
+    if File.exists?(File.join(@folder, @channel + "_downloaded")) then
+      puts @channel + "_downloaded existiert"
+    end
+  end
+
+  def really_fetch(pagenum)
+    Page.new(@options,pagenum).fetch
+  end
+
+  def fetch
+    threads = [] if @options[:threaded]
+    (0..10).each do |pagenum|
+      if @options[:threaded] then
+        threads << Thread.new { really_fetch(pagenum) }        
+      else
+        really_fetch(pagenum)
+      end
+    end
+    threads.each do |thread| thread.join end if @options[:threaded]
+  end
+
+  def fetch_endlessly
+    while true do
+      fetch
+    end
+  end
+
 end
+
+options = {}
+
+optparse = OptionParser.new do |opts|
+
+  opts.banner = "Usage: stalkerchan.rb [options]"
+
+  options[:verbose] = false
+  opts.on( "-v","--verbose","Verbose mode") do
+    options[:verbose] = true
+  end
+
+  options[:threaded] = false
+  opts.on("-t","--threaded","Use threads") do
+    options[:threaded] = true
+  end
+
+  options[:channel] = "b"
+  opts.on("-c","--channel CHANNEL","set channel to scrape (default: b)") do |channel|
+    options[:channel] = channel
+  end
+
+  options[:folder] = "images"
+  opts.on("-o","--output FOLDER","set output folder (default: images)") do |folder|
+    options[:folder] = folder
+  end
+
+  options[:chan] = "krautchan"
+  opts.on("-f","--fourchan","scrape 4chan instead of Krautchan") do
+    options[:chan] = "4chan"
+  end
+
+  options[:gps] = false
+  opts.on("-g","--gps","look for GPS data") do
+    options[:gps] = true
+  end
+
+  opts.on("-h","--help","Display this screen") do
+    puts opts
+    exit
+  end
+end
+
+optparse.parse!
+
+Downloader.new(options).fetch
