@@ -12,32 +12,28 @@ class Image
 
   @@read_images = Hash.new
 
-  def initialize(root, href, folder)
-    @root, @href, @folder = root, href,folder
-  end
-
-  def url
-    @root + @href
+  def initialize(url, folder, options)
+    @url,@folder,@options = url, folder, options
   end
 
   def fetch
-    if @@read_images[@href] then
-      puts "Schon geladen: #{url}"
+    if @@read_images[@url] then
+      puts "Schon geladen: #{@url}" if @options[:verbose]
     else
-      puts "Lade #{url}"
-      filename = File.join(@folder, url[/\d+\..*/])     
+      puts "Lade #{@url}" if @options[:verbose]
+      filename = File.join(@folder, @url[/\d+\..*/])     
       begin
         if !File.exists?(filename) then
           File.open(filename, 'w') do |file|
-            file.write(open(url).read)           
+            file.write(open(@url).read)           
           end
         else  
-          puts "File exists already: #{filename}" if File.exists?(filename)
+          puts "File exists already: #{filename}" if File.exists?(filename) && @options[:verbose]
         end
         @@read_images[@href] = true
       rescue OpenURI::HTTPError => error
         puts error
-        puts url + " already gone..."
+        puts @url + " already gone..."
         File.delete(filename) 
       end
     end   
@@ -49,9 +45,9 @@ class Faden
 
   @@read_threads = Hash.new 
 
-  def initialize(root, url, folder)
-    @root, @url, @folder = root, url, folder
-    puts "Lese Thread #{url}"
+  def initialize(root, url, folder, options)
+    @root, @url, @folder, @options = root, url, folder, options
+    puts "Lese Thread #{url}" if @options[:verbose]
   end
 
   def url
@@ -60,14 +56,14 @@ class Faden
 
   def fetch
     if @@read_threads[url.split("#")[0]] then
-      puts "Thread schon gelesen!"
+      puts "Thread schon gelesen!" if @options[:verbose]
     else
       begin
         @doc = Nokogiri(open(url))
         @@read_threads[url] = true
         @images = @doc/"a[@href*='files']"
         @images.each do |element|
-          Image.new(@root,element[:href],@folder).fetch
+          Image.new(@root+element[:href],@folder,@options).fetch
         end
       rescue OpenURI::HTTPError => error
         puts "Error while fetching #{url} - #{error}"
@@ -98,7 +94,7 @@ class Page
     @threads = @doc/"a[@href*='thread-']"
     FileUtils.makedirs(@folder)
     @threads.each do |thread|
-      Faden.new(@root,thread[:href],@folder).fetch
+      Faden.new(@root,thread[:href],@folder,@options).fetch
     end
   end
 end
