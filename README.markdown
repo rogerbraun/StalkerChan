@@ -1,4 +1,4 @@
-# StalkerCha
+# StalkerChan
 
 ## A fork of github.com/anonymous/4chan.
 
