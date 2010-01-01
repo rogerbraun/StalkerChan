@@ -9,6 +9,7 @@ The program was inspired by a thread on /b/, asking for a program to quick-check
 ### Features
 - Downloads everything on a Krautchan or 4chan channel recursively 
 - Looks for GPS data and prints position data
+
 ### Planned Features
 - Looks for GPS data and moves files which have it
 - Save only images containing GPS data
