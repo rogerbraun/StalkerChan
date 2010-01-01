@@ -16,6 +16,26 @@ class Image
     @url,@folder,@options = url, folder, options
   end
 
+  def analyze(file)
+    if file.downcase[".jpg"] or file.downcase[".jpeg"] then
+      begin
+        jpg = EXIFR::JPEG.new(file)
+        if jpg.exif? then  
+          if jpg.exif.gps_latitude != nil then
+            lat = jpg.exif.gps_latitude[0].to_f  + (jpg.exif.gps_latitude[1].to_f / 60) + (jpg.exif.gps_latitude[2].to_f / 3600)
+            long = jpg.exif.gps_longitude[0] + (jpg.exif.gps_longitude[1].to_f / 60) + (jpg.exif.gps_longitude[2].to_f / 3600)
+            long = long * -1 if jpg.exif.gps_longitude_ref == "W"   # (W is -, E is +)
+
+            puts "Picture: #{file} Latitude: #{lat} Longitude #{long}"
+            puts "Google Maps: http://maps.google.com/maps?ll=#{lat},#{long}&q=#{lat},#{long}"
+          end
+        end
+      rescue RuntimeError, TypeError, NoMethodError => error
+        puts error+ "in #{file}"
+      end
+    end
+  end
+
   def fetch
     if @@read_images[@url] then
       puts "Schon geladen: #{@url}" if @options[:verbose]
@@ -27,6 +47,7 @@ class Image
           File.open(filename, 'w') do |file|
             file.write(open(@url).read)           
           end
+          analyze(filename) if @options[:gps]
         else  
           puts "File exists already: #{filename}" if File.exists?(filename) && @options[:verbose]
         end
@@ -51,7 +72,12 @@ class Faden
   end
 
   def url
-    @root + @url
+    case @options[:chan]
+      when "krautchan"
+        @root + @url
+      when "4chan"
+        @root + "/" + @options[:channel] + "/" + @url
+    end
   end
 
   def fetch
@@ -61,9 +87,14 @@ class Faden
       begin
         @doc = Nokogiri(open(url))
         @@read_threads[url] = true
-        @images = @doc/"a[@href*='files']"
+        case @options[:chan]
+          when "krautchan" then
+            @images = @doc/"a[@href*='files']"
+          when "4chan" then
+            @images = @doc/"a[@href*='src/']"
+          end
         @images.each do |element|
-          Image.new(@root+element[:href],@folder,@options).fetch
+          Image.new(case @options[:chan] when "krautchan" then @root+element[:href] when "4chan" then element[:href] end,@folder,@options).fetch
         end
       rescue OpenURI::HTTPError => error
         puts "Error while fetching #{url} - #{error}"
@@ -77,10 +108,17 @@ class Page
   def initialize(options, pagenum)
     @channel,@pagenum,@folder,@options = options[:channel],pagenum,File.join(options[:folder],options[:channel]), options
     @root, @suffix = "http://krautchan.net",".html" if @options[:chan] == "krautchan"
+    @root, @suffix = "http://boards.4chan.org","" if @options[:chan] == "4chan"
   end
 
   def page
-    @pagenum.to_s + @suffix
+    
+    case @options[:chan]
+      when "krautchan" then
+        @pagenum.to_s + @suffix
+      when "4chan" then
+        if @pagenum == 0 then "" else @pagenum.to_s end 
+    end
   end
 
   def url
@@ -91,7 +129,12 @@ class Page
     puts url
     @doc = Nokogiri(open(url))
 
-    @threads = @doc/"a[@href*='thread-']"
+    case @options[:chan]
+      when "krautchan"
+        @threads = @doc/"a[@href*='thread-']"
+      when "4chan"
+        @threads = @doc/"a[@href*='res/']"
+    end
     FileUtils.makedirs(@folder)
     @threads.each do |thread|
       Faden.new(@root,thread[:href],@folder,@options).fetch

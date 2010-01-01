@@ -7,8 +7,8 @@ This software will download all pictures of a (4|Kraut)chan channel and look for
 The program was inspired by a thread on /b/, asking for a program to quick-check if there is GPS data in images. I want to show that you should be more aware of what you are putting on the internet. Most modern phones and some cameras have a GPS module built in and will tag the images you take. Even if you tried to conceal your identity, having GPS data of where the photo was taken will make it easier to identify you.
 
 ### Features
-- Downloads recursively everything on a Krautchan channel
-
+- Downloads everything on a Krautchan or 4chan channel recursively 
+- Looks for GPS data and prints position data
 ### Planned Features
 - Looks for GPS data and moves files which have it
 - Save only images containing GPS data
@@ -19,7 +19,7 @@ The program was inspired by a thread on /b/, asking for a program to quick-check
 - exifr
 
 ### Usage
-    stalkerchan.rb [-c channel | -f folder]
+    stalkerchan.rb [-c channel | -o folder]
 
 For more options see 
 
