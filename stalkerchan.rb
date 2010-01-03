@@ -56,6 +56,9 @@ class Image
         puts error
         puts @url + " already gone..."
         File.delete(filename) 
+      rescue => error
+        puts error + " while trying to fetch #{@url}."
+        File.delete(filename)
       end
     end   
   end
