@@ -224,7 +224,7 @@ optparse = OptionParser.new do |opts|
   
   options[:endless] = false
   opts.on("-e","--endless","download endlessly") do
-    options[:endless = true]
+    options[:endless] = true
   end
 
   opts.on("-h","--help","Display this screen") do
