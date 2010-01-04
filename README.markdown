@@ -26,6 +26,11 @@ For more options see
 
     stalkerchan.rb --help
 
+#### Example
+     stalkerchan.rb -f -c s -g -e
+
+This will download images from 4chan (-f) from the /s/ channel (-c s) and will look for gps data (-g) endlessly in a loop (-e)
+
 ### Attention
 Using this software on NSFW channels (like /b/, or /s/, which is the default!) will result in NSFW images on your computer. Don't use it if you don't want that.
 
