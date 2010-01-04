@@ -57,7 +57,7 @@ class Image
         puts @url + " already gone..."
         File.delete(filename) 
       rescue => error
-        puts error + " while trying to fetch #{@url}."
+        puts "Error: #{error} while trying to fetch #{@url}."
         File.delete(filename)
       end
     end   
@@ -158,7 +158,7 @@ class Downloader
     Page.new(@options,pagenum).fetch
   end
 
-  def fetch
+  def fetch_once
     threads = [] if @options[:threaded]
     (0..10).each do |pagenum|
       if @options[:threaded] then
@@ -172,7 +172,15 @@ class Downloader
 
   def fetch_endlessly
     while true do
-      fetch
+      fetch_once
+    end
+  end
+
+  def fetch
+    if @options[:endless]
+      fetch_endlessly
+    else
+      fetch_once
     end
   end
 
@@ -212,6 +220,11 @@ optparse = OptionParser.new do |opts|
   options[:gps] = false
   opts.on("-g","--gps","look for GPS data") do
     options[:gps] = true
+  end
+  
+  options[:endless] = false
+  opts.on("-e","--endless","download endlessly") do
+    options[:endless = true]
   end
 
   opts.on("-h","--help","Display this screen") do
