@@ -27,7 +27,7 @@ For more options see
     stalkerchan.rb --help
 
 #### Example
-     stalkerchan.rb -f -c s -g -e
+    stalkerchan.rb -f -c s -g -e
 
 This will download images from 4chan (-f) from the /s/ channel (-c s) and will look for gps data (-g) endlessly in a loop (-e)
 
