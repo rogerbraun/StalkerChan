@@ -7,6 +7,13 @@ require "exifr"
 require "optparse"
 require "fileutils"
 
+module Enumerable
+  def uniq_by
+    seen = Hash.new { |h,k| h[k] = true; false }
+    reject { |v| seen[yield(v)] }
+  end
+end
+
 
 class Image
 
@@ -20,6 +27,7 @@ class Image
     if file.downcase[".jpg"] or file.downcase[".jpeg"] then
       begin
         jpg = EXIFR::JPEG.new(file)
+        puts "#{file}: #{jpg.comment}" if jpg.comment
         if jpg.exif? then  
           if jpg.exif.gps_latitude != nil then
             lat = jpg.exif.gps_latitude[0].to_f  + (jpg.exif.gps_latitude[1].to_f / 60) + (jpg.exif.gps_latitude[2].to_f / 3600)
@@ -31,7 +39,7 @@ class Image
           end
         end
       rescue RuntimeError, TypeError, NoMethodError => error
-        puts error+ "in #{file}"
+        puts "#{error} while analyzing #{file}"
       end
     end
   end
@@ -67,8 +75,6 @@ end
 
 class Faden 
 
-  @@read_threads = Hash.new 
-
   def initialize(root, url, folder, options)
     @root, @url, @folder, @options = root, url, folder, options
     puts "Lese Thread #{url}" if @options[:verbose]
@@ -84,25 +90,20 @@ class Faden
   end
 
   def fetch
-    if @@read_threads[url.split("#")[0]] then
-      puts "Thread schon gelesen!" if @options[:verbose]
-    else
-      begin
-        @doc = Nokogiri(open(url))
-        @@read_threads[url] = true
-        case @options[:chan]
-          when "krautchan" then
-            @images = @doc/"a[@href*='files']"
-          when "4chan" then
-            @images = @doc/"a[@href*='src/']"
-          end
-        @images.each do |element|
-          Image.new(case @options[:chan] when "krautchan" then @root+element[:href] when "4chan" then element[:href] end,@folder,@options).fetch
-        end
-      rescue OpenURI::HTTPError => error
-        puts "Error while fetching #{url} - #{error}"
+    begin
+      @doc = Nokogiri(open(url))
+      case @options[:chan]
+        when "krautchan" then
+          @images = @doc/"a[@href*='files']"
+        when "4chan" then
+          @images = @doc/"a[@href*='src/']"
       end
-    end  
+      @images.each do |element|
+        Image.new(case @options[:chan] when "krautchan" then @root+element[:href] when "4chan" then element[:href] end,@folder,@options).fetch
+      end
+    rescue OpenURI::HTTPError => error
+      puts "Error while fetching #{url} - #{error}"
+    end
   end
 end
 
@@ -129,18 +130,24 @@ class Page
   end
 
   def fetch
-    puts url
-    @doc = Nokogiri(open(url))
+    begin
+      puts url
+      @doc = Nokogiri(open(url))
 
-    case @options[:chan]
-      when "krautchan"
-        @threads = @doc/"a[@href*='thread-']"
-      when "4chan"
-        @threads = @doc/"a[@href*='res/']"
-    end
-    FileUtils.makedirs(@folder)
-    @threads.each do |thread|
-      Faden.new(@root,thread[:href],@folder,@options).fetch
+      case @options[:chan]
+        when "krautchan"
+          @threads = @doc/"a[@href*='thread-']"
+        when "4chan"
+          @threads = @doc/"a[@href*='res/']"
+      end
+      @threads = @threads.uniq_by { |element| element[:href].split("#")[0]}
+      FileUtils.makedirs(@folder)
+      @threads.each do |thread|
+        Faden.new(@root,thread[:href],@folder,@options).fetch
+      end
+    rescue => error
+      puts "Something went wrong while fetching #{url}, trying next page."
+      puts "Error: #{error}"
     end
   end
 end
